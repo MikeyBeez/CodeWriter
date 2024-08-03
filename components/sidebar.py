@@ -29,14 +29,10 @@ def render_sidebar(config):
 
     # Navigation
     st.sidebar.subheader("🧭 Navigation")
-    pages = ["Home", "Project Prompt", "Project Details", "Code Generation", "Plan Document"]
+    pages = ["Home", "Project Prompt", "Project Files", "Project Details", "Settings"]
     for page in pages:
         if st.sidebar.button(page, key=page):
             st.session_state.page = page
-
-    # Settings
-    if st.sidebar.button("⚙️ Settings"):
-        st.session_state.page = "Settings"
 
     # Display current project for debugging
     if 'current_project' in st.session_state:

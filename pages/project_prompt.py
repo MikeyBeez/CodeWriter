@@ -1,119 +1,164 @@
 import streamlit as st
-import requests
+from pathlib import Path
 import json
+from utils import ollama_api
 
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
+def save_plan_to_file(plan, project_path):
+    plan_file = project_path / "project_plan.json"
+    with open(plan_file, "w") as f:
+        json.dump(plan, f, indent=2)
 
-def generate_response(prompt, model):
-    data = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False
+def load_plan_from_file(project_path):
+    plan_file = project_path / "project_plan.json"
+    if plan_file.exists():
+        with open(plan_file, "r") as f:
+            return json.load(f)
+    return None
+
+def generate_structured_plan(project_details, model):
+    prompt = f"""
+    Create a structured project plan for a {project_details['type']} with the following specifications:
+    
+    Project Description: {project_details['description']}
+    Target Audience: {project_details['audience']}
+    Main Features: {project_details['features']}
+    User Interface: {project_details['ui']}
+    Data Storage: {project_details['storage']}
+    External APIs/Services: {project_details['apis']}
+    Performance Requirements: {project_details['performance']}
+    Scalability Importance: {project_details['scalability']}
+    Additional Requirements: {project_details['additional']}
+
+    Please provide a plan with the following structure:
+    1. Project Title
+    2. 5-7 main steps, each with:
+       - Step title
+       - Step description
+       - 2-4 substeps for each step, each with:
+         * Substep title
+         * Substep description
+
+    Format the output as a JSON object matching this structure:
+    {
+        "title": "Project Title",
+        "steps": [
+            {
+                "id": 1,
+                "title": "Step 1 Title",
+                "description": "Step 1 Description",
+                "substeps": [
+                    {
+                        "id": 1.1,
+                        "title": "Substep 1.1 Title",
+                        "description": "Substep 1.1 Description"
+                    },
+                    ...
+                ]
+            },
+            ...
+        ]
     }
-    response = requests.post(OLLAMA_API_URL, json=data)
-    if response.status_code == 200:
-        return response.json()['response']
-    else:
-        return f"Error: {response.status_code} - {response.text}"
+    """
+    response = ollama_api.generate(prompt, model)
+    try:
+        plan = json.loads(response)
+        # Add completed, context, and code fields
+        for step in plan['steps']:
+            step['completed'] = False
+            for substep in step['substeps']:
+                substep['completed'] = False
+                substep['context'] = ""
+                substep['code'] = ""
+        return plan
+    except json.JSONDecodeError:
+        st.error("Failed to parse the generated plan. Please try again.")
+        return None
+
+def execute_step(step, substep, context, model):
+    prompt = f"""
+    Execute the following step in a software development project:
+
+    Step: {step['title']}
+    Substep: {substep['title']}
+    Description: {substep['description']}
+    Additional Context: {context}
+
+    Please provide the code necessary to implement this substep. 
+    If the substep doesn't require code, provide a detailed explanation of the actions to be taken.
+    """
+    return ollama_api.generate(prompt, model)
 
 def render(config):
-    st.title("Project Prompt")
+    st.title("Project Prompt and Step-by-Step Execution")
 
     if 'current_project' not in st.session_state or 'current_project_path' not in st.session_state:
         st.error("Please select a project from the sidebar first.")
         return
 
+    project_path = Path(st.session_state.current_project_path)
     st.write(f"Current Project: {st.session_state.current_project}")
-    st.write(f"Project Path: {st.session_state.current_project_path}")
+    st.write(f"Project Path: {project_path}")
     st.write(f"Using AI Model: {config.get('model', 'deepseek-coder-v2')}")
 
-    # Initialize session state for questions
-    if 'questions_completed' not in st.session_state:
-        st.session_state.questions_completed = False
+    plan = load_plan_from_file(project_path)
 
-    if not st.session_state.questions_completed:
+    if plan is None:
+        if 'project_details' not in st.session_state:
+            st.session_state.project_details = {
+                'type': '', 'description': '', 'audience': '', 'features': '',
+                'ui': '', 'storage': '', 'apis': '', 'performance': '',
+                'scalability': '', 'additional': ''
+            }
+
         st.subheader("Project Specification Questions")
         
-        project_type = st.text_input("What type of project do you want to create? (e.g., game, web application, mobile app, data analysis tool, etc.)")
-        
-        project_description = st.text_area("Provide a brief description of your project and its main purpose.")
-        
-        target_audience = st.text_input("Who is the target audience for this project?")
-        
-        main_features = st.text_area("What are the main features or functionalities you want to include? (List them separated by commas)")
-        
-        user_interface = st.selectbox("What type of user interface does your project require?", 
-                                      ["Command Line", "Graphical User Interface (GUI)", "Web-based", "Mobile App", "Other"])
-        if user_interface == "Other":
-            user_interface = st.text_input("Please specify the user interface type:")
-        
-        data_storage = st.selectbox("Will your project require data storage?", 
-                                    ["No", "Yes - Local File Storage", "Yes - Database", "Yes - Cloud Storage", "Not sure"])
-        
-        external_apis = st.text_input("Are there any external APIs or services your project needs to integrate with? If yes, please list them.")
-        
-        performance_requirements = st.text_area("Are there any specific performance requirements or constraints for your project?")
-        
-        scalability = st.selectbox("How important is scalability for your project?", 
-                                   ["Not important", "Somewhat important", "Very important", "Critical"])
-        
-        additional_requirements = st.text_area("Any additional requirements, constraints, or specifications?")
+        st.session_state.project_details['type'] = st.text_input("Project Type", st.session_state.project_details['type'])
+        st.session_state.project_details['description'] = st.text_area("Project Description", st.session_state.project_details['description'])
+        st.session_state.project_details['audience'] = st.text_input("Target Audience", st.session_state.project_details['audience'])
+        st.session_state.project_details['features'] = st.text_area("Main Features", st.session_state.project_details['features'])
+        st.session_state.project_details['ui'] = st.selectbox("User Interface", ["", "Command Line", "GUI", "Web-based", "Mobile App", "Other"])
+        st.session_state.project_details['storage'] = st.selectbox("Data Storage", ["", "No", "Local File", "Database", "Cloud Storage"])
+        st.session_state.project_details['apis'] = st.text_input("External APIs", st.session_state.project_details['apis'])
+        st.session_state.project_details['performance'] = st.text_area("Performance Requirements", st.session_state.project_details['performance'])
+        st.session_state.project_details['scalability'] = st.selectbox("Scalability Importance", ["", "Not important", "Somewhat important", "Very important", "Critical"])
+        st.session_state.project_details['additional'] = st.text_area("Additional Requirements", st.session_state.project_details['additional'])
 
         if st.button("Generate Project Plan"):
-            if project_type and project_description:
-                st.session_state.questions_completed = True
-                st.session_state.project_prompt = f"""
-                Create a detailed project plan for a {project_type} with the following specifications:
-                
-                Project Description: {project_description}
-                Target Audience: {target_audience}
-                Main Features: {main_features}
-                User Interface: {user_interface}
-                Data Storage: {data_storage}
-                External APIs/Services: {external_apis}
-                Performance Requirements: {performance_requirements}
-                Scalability Importance: {scalability}
-                Additional Requirements: {additional_requirements}
-
-                Please provide:
-                1. A comprehensive project overview
-                2. A detailed list of features and functionalities
-                3. A suggested technology stack and architecture
-                4. A proposed file/folder structure for the project
-                5. A development roadmap with milestones and estimated timelines
-                6. Potential challenges, considerations, and mitigation strategies
-                7. Testing and quality assurance recommendations
-                8. Deployment and maintenance considerations
-                """
-                st.experimental_rerun()
-            else:
-                st.warning("Please provide at least the project type and description before generating the plan.")
+            with st.spinner("Generating project plan..."):
+                plan = generate_structured_plan(st.session_state.project_details, config.get('model', 'deepseek-coder-v2'))
+                if plan:
+                    save_plan_to_file(plan, project_path)
+                    st.success("Project plan generated and saved successfully!")
+                    st.experimental_rerun()
     else:
-        st.subheader("Generated Project Plan")
-        
-        if st.button("Regenerate Project Plan"):
-            st.session_state.questions_completed = False
-            st.experimental_rerun()
-        
-        prompt = st.session_state.project_prompt
-        
-        with st.spinner("Generating project plan..."):
-            response = generate_response(prompt, config.get('model', 'deepseek-coder-v2'))
-            st.write(response)
+        st.subheader(plan['title'])
+        for step in plan['steps']:
+            st.write(f"Step {step['id']}: {step['title']} ({'Completed' if step['completed'] else 'In Progress'})")
+            for substep in step['substeps']:
+                col1, col2, col3 = st.columns([3, 1, 1])
+                with col1:
+                    st.write(f"  {substep['id']}: {substep['title']} ({'Completed' if substep['completed'] else 'Pending'})")
+                with col2:
+                    if not substep['completed']:
+                        if st.button(f"Do Step {substep['id']}"):
+                            context = st.text_area(f"Additional context for step {substep['id']}:", key=f"context_{substep['id']}")
+                            with st.spinner(f"Executing step {substep['id']}..."):
+                                result = execute_step(step, substep, context, config.get('model', 'deepseek-coder-v2'))
+                                substep['code'] = result
+                                substep['context'] = context
+                                substep['completed'] = True
+                                save_plan_to_file(plan, project_path)
+                                st.success(f"Step {substep['id']} completed!")
+                                st.experimental_rerun()
+                with col3:
+                    if substep['completed']:
+                        if st.button(f"View Result {substep['id']}"):
+                            st.code(substep['code'])
+                            st.write("Context:", substep['context'])
 
-            # Save the generated plan
-            plan_file = st.session_state.current_project_path / "project_plan.md"
-            with open(plan_file, "w") as f:
-                f.write(response)
-            st.success(f"Project plan saved to {plan_file}")
+        if all(step['completed'] for step in plan['steps']):
+            st.success("All steps completed! Project is ready for review.")
 
-    st.divider()
-    
-    st.subheader("Existing Project Plan")
-    plan_file = st.session_state.current_project_path / "project_plan.md"
-    if plan_file.exists():
-        with open(plan_file, "r") as f:
-            existing_plan = f.read()
-        st.text_area("Existing Plan", value=existing_plan, height=300, disabled=True)
-    else:
-        st.info("No existing project plan found.")
+    if st.button("View Project Files"):
+        st.session_state.page = "project_files"
+        st.experimental_rerun()

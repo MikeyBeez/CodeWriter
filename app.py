@@ -37,7 +37,7 @@ try:
 except ImportError as e:
     st.error(f"Page {st.session_state.page} not found. Error: {str(e)}")
     st.write("Available pages:")
-    for name in ["home", "project_prompt", "project_details", "code_generation", "plan_document"]:
+    for name in ["home", "project_prompt", "project_files", "project_details", "settings"]:
         st.write(f"- {name}")
 
 # Display configuration for debugging

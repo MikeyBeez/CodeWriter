@@ -27,8 +27,11 @@ def render(config):
         st.error("Please select a project from the sidebar first.")
         return
 
-    project_path = st.session_state.current_project_path
+    project_path = Path(st.session_state.current_project_path)
     details = load_project_details(project_path)
+
+    st.write(f"Current Project: {st.session_state.current_project}")
+    st.write(f"Project Path: {project_path}")
 
     details['name'] = st.text_input("Project Name", value=details['name'])
     details['description'] = st.text_area("Project Description", value=details['description'])

@@ -1,26 +1,20 @@
 import streamlit as st
 from pathlib import Path
-from config import save_config, load_config
+from config import save_config
 import os
-
-def get_directory_contents(path):
-    contents = [('..', path.parent)] if path != path.root else []
-    contents.extend((item.name, item) for item in path.iterdir() if item.is_dir())
-    return contents
 
 def show_setup_wizard():
     st.title("🧙‍♂️ Setup Wizard")
     
-    # Load existing config
-    config = load_config()
+    config = {}
     
-    config['username'] = st.text_input("👤 Your Name", value=config.get('username', ''))
+    config['username'] = st.text_input("👤 Your Name")
     
     st.write("📂 Code Directory")
     
     # Initialize session state for current directory
     if 'current_dir' not in st.session_state:
-        st.session_state.current_dir = Path(config.get('code_directory', Path.home()))
+        st.session_state.current_dir = Path.home()
     
     # Manual path entry
     manual_path = st.text_input("Enter path manually", str(st.session_state.current_dir))
@@ -59,8 +53,9 @@ def show_setup_wizard():
     # Display current working directory for reference
     st.write(f"Current working directory: {os.getcwd()}")
 
-    # Debug information
-    st.write("Debug Info:")
-    st.json(config)
-
     return config
+
+def get_directory_contents(path):
+    contents = [('..', path.parent)] if path != path.root else []
+    contents.extend((item.name, item) for item in path.iterdir() if item.is_dir())
+    return contents
