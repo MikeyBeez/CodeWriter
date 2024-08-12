@@ -1,5 +1,7 @@
 # Code Writer
 
+This is just the beginning of this project; so it runs but isn't working very well yet.  I need to workout how to build a plan that can be worked on step by step.
+
 Code Writer is an AI-assisted project initialization and management tool that uses Ollama to generate project plans and code snippets. It provides a user-friendly interface for creating, managing, and developing software projects with the help of AI models.
 
 ## Features
